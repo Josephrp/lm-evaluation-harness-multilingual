@@ -125,8 +125,13 @@ class VLLM(TemplateLM):
         
         # If we detected rope_scaling with missing original_max_position_embeddings, override it
         if hasattr(self, '_rope_scaling_fixed') and self._rope_scaling_fixed:
-            self.model_args["rope_scaling"] = None
-            eval_logger.info("Overriding rope_scaling to None to avoid original_max_position_embeddings error")
+            # Provide a valid rope_scaling config with original_max_position_embeddings
+            self.model_args["rope_scaling"] = {
+                "type": "linear",
+                "factor": 1.0,
+                "original_max_position_embeddings": max_pos_embeddings if max_pos_embeddings else 4096
+            }
+            eval_logger.info("Overriding rope_scaling with valid config to avoid original_max_position_embeddings error")
         self.model_args.update(kwargs)
         self.batch_size = (
             "auto"
