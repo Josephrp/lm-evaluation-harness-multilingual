@@ -78,6 +78,26 @@ class VLLM(TemplateLM):
         self._max_length = max_model_len if max_model_len is not None else max_length
         self.tensor_parallel_size = int(tensor_parallel_size)
         self.data_parallel_size = int(data_parallel_size)
+        # Load model config to get max position embeddings
+        from transformers import AutoConfig
+        try:
+            model_config = AutoConfig.from_pretrained(
+                pretrained, trust_remote_code=trust_remote_code, revision=revision
+            )
+            # Get max position embeddings from config
+            max_pos_embeddings = getattr(model_config, 'max_position_embeddings', None)
+            if max_pos_embeddings is None:
+                max_pos_embeddings = getattr(model_config, 'n_positions', None)
+            if max_pos_embeddings is None:
+                max_pos_embeddings = getattr(model_config, 'n_ctx', None)
+            
+            # If we found max position embeddings, use it for max_model_len if not explicitly set
+            if max_pos_embeddings and self._max_length is None:
+                self._max_length = max_pos_embeddings
+                eval_logger.info(f"Using max_position_embeddings={max_pos_embeddings} from model config")
+        except Exception as e:
+            eval_logger.warning(f"Could not load model config: {e}")
+        
         self.model_args = {
             "model": pretrained,
             "gpu_memory_utilization": float(gpu_memory_utilization),
@@ -100,7 +120,18 @@ class VLLM(TemplateLM):
             else batch_size
         )
         if self.data_parallel_size <= 1:
-            self.model = LLM(**self.model_args)
+            # Add workaround for models with missing original_max_position_embeddings
+            try:
+                self.model = LLM(**self.model_args)
+            except KeyError as e:
+                if 'original_max_position_embeddings' in str(e):
+                    eval_logger.warning("Model missing original_max_position_embeddings, trying with rope_scaling=None")
+                    # Remove max_model_len to let VLLM auto-detect
+                    model_args_fixed = self.model_args.copy()
+                    model_args_fixed.pop('max_model_len', None)
+                    self.model = LLM(**model_args_fixed)
+                else:
+                    raise
         else:
             eval_logger.warning(
                 "You might experience occasional issues with model weight downloading when data_parallel is in use. To ensure stable performance, run with data_parallel_size=1 until the weights are downloaded and cached."
