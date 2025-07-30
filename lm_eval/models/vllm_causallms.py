@@ -132,6 +132,33 @@ class VLLM(TemplateLM):
                     self.model = LLM(**model_args_fixed)
                 else:
                     raise
+            except Exception as e:
+                if 'original_max_position_embeddings' in str(e):
+                    eval_logger.warning("Model missing original_max_position_embeddings, trying with rope_scaling=None")
+                    # Remove max_model_len to let VLLM auto-detect
+                    model_args_fixed = self.model_args.copy()
+                    model_args_fixed.pop('max_model_len', None)
+                    # Also try adding rope_scaling=None to disable RoPE scaling
+                    model_args_fixed["rope_scaling"] = None
+                    try:
+                        self.model = LLM(**model_args_fixed)
+                    except Exception as e2:
+                        if 'original_max_position_embeddings' in str(e2):
+                            eval_logger.warning("Still getting original_max_position_embeddings error, trying with minimal config")
+                            # Try with minimal configuration
+                            minimal_args = {
+                                "model": pretrained,
+                                "gpu_memory_utilization": float(gpu_memory_utilization),
+                                "dtype": dtype,
+                                "trust_remote_code": trust_remote_code,
+                                "tensor_parallel_size": int(tensor_parallel_size),
+                                "rope_scaling": None,
+                            }
+                            self.model = LLM(**minimal_args)
+                        else:
+                            raise e2
+                else:
+                    raise
         else:
             eval_logger.warning(
                 "You might experience occasional issues with model weight downloading when data_parallel is in use. To ensure stable performance, run with data_parallel_size=1 until the weights are downloaded and cached."
