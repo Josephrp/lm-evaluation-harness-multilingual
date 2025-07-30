@@ -871,6 +871,44 @@ class HFLM(TemplateLM):
             merged_kwargs.update(generation_kwargs)
             generation_kwargs = merged_kwargs
         
+        # Convert numeric generation parameters to ensure correct types
+        numeric_params = {
+            'max_new_tokens': int,
+            'max_length': int,
+            'min_length': int,
+            'num_beams': int,
+            'num_beam_groups': int,
+            'num_return_sequences': int,
+            'length_penalty': float,
+            'repetition_penalty': float,
+            'temperature': float,
+            'top_p': float,
+            'top_k': int,
+            'no_repeat_ngram_size': int,
+            'bad_words_ids': list,
+            'forced_bos_token_id': int,
+            'forced_eos_token_id': int,
+            'pad_token_id': int,
+            'eos_token_id': int,
+            'bos_token_id': int,
+        }
+        
+        for param, param_type in numeric_params.items():
+            if param in generation_kwargs and generation_kwargs[param] is not None:
+                try:
+                    if param_type == list:
+                        # For list parameters, ensure all elements are the correct type
+                        if isinstance(generation_kwargs[param], str):
+                            # Handle string representation of lists
+                            import ast
+                            generation_kwargs[param] = ast.literal_eval(generation_kwargs[param])
+                    else:
+                        generation_kwargs[param] = param_type(generation_kwargs[param])
+                except (ValueError, TypeError) as e:
+                    # If conversion fails, remove the parameter to avoid errors
+                    eval_logger.warning(f"Failed to convert {param}={generation_kwargs[param]} to {param_type.__name__}: {e}. Removing parameter.")
+                    generation_kwargs.pop(param)
+        
         # temperature = 0.0 if not set
         # if do_sample is false and temp==0.0:
         # remove temperature, as do_sample=False takes care of this
