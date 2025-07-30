@@ -528,7 +528,26 @@ class HFLM(TemplateLM):
         please consider subclassing HFLM and overriding this and other methods as needed.
         """
 
-        model_kwargs = kwargs if kwargs else {}
+        # Separate generation parameters from model initialization parameters
+        generation_params = {
+            'temperature', 'top_p', 'do_sample', 'max_new_tokens', 
+            'repetition_penalty', 'top_k', 'num_beams', 'length_penalty',
+            'no_repeat_ngram_size', 'early_stopping', 'pad_token_id',
+            'eos_token_id', 'bos_token_id', 'use_cache'
+        }
+        
+        model_kwargs = {}
+        generation_kwargs = {}
+        
+        if kwargs:
+            for key, value in kwargs.items():
+                if key in generation_params:
+                    generation_kwargs[key] = value
+                else:
+                    model_kwargs[key] = value
+        
+        # Store generation parameters for later use
+        self._generation_kwargs = generation_kwargs
 
         if parallelize:
             model_kwargs.update(
@@ -846,6 +865,12 @@ class HFLM(TemplateLM):
                 return self.model(inps).logits
 
     def _model_generate(self, context, max_length, stop, **generation_kwargs):
+        # Merge stored generation parameters with passed ones (passed ones take precedence)
+        if hasattr(self, '_generation_kwargs'):
+            merged_kwargs = self._generation_kwargs.copy()
+            merged_kwargs.update(generation_kwargs)
+            generation_kwargs = merged_kwargs
+        
         # temperature = 0.0 if not set
         # if do_sample is false and temp==0.0:
         # remove temperature, as do_sample=False takes care of this
