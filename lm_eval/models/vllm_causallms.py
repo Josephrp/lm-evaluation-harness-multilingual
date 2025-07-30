@@ -97,6 +97,8 @@ class VLLM(TemplateLM):
                 # Add the missing field to rope_scaling
                 rope_scaling['original_max_position_embeddings'] = max_pos_embeddings
                 eval_logger.info(f"Added original_max_position_embeddings={max_pos_embeddings} to rope_scaling config")
+                # Set flag to override rope_scaling in model_args
+                self._rope_scaling_fixed = True
             
             # If we found max position embeddings, use it for max_model_len if not explicitly set
             if max_pos_embeddings and self._max_length is None:
@@ -120,6 +122,11 @@ class VLLM(TemplateLM):
             "quantization": quantization,
             "seed": int(seed),
         }
+        
+        # If we detected rope_scaling with missing original_max_position_embeddings, override it
+        if hasattr(self, '_rope_scaling_fixed') and self._rope_scaling_fixed:
+            self.model_args["rope_scaling"] = None
+            eval_logger.info("Overriding rope_scaling to None to avoid original_max_position_embeddings error")
         self.model_args.update(kwargs)
         self.batch_size = (
             "auto"
