@@ -91,6 +91,13 @@ class VLLM(TemplateLM):
             if max_pos_embeddings is None:
                 max_pos_embeddings = getattr(model_config, 'n_ctx', None)
             
+            # Check if model has rope_scaling but missing original_max_position_embeddings
+            rope_scaling = getattr(model_config, 'rope_scaling', None)
+            if rope_scaling and isinstance(rope_scaling, dict) and 'original_max_position_embeddings' not in rope_scaling:
+                # Add the missing field to rope_scaling
+                rope_scaling['original_max_position_embeddings'] = max_pos_embeddings
+                eval_logger.info(f"Added original_max_position_embeddings={max_pos_embeddings} to rope_scaling config")
+            
             # If we found max position embeddings, use it for max_model_len if not explicitly set
             if max_pos_embeddings and self._max_length is None:
                 self._max_length = max_pos_embeddings
