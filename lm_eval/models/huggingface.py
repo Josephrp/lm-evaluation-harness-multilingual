@@ -922,6 +922,37 @@ class HFLM(TemplateLM):
 
         if do_sample is False and generation_kwargs.get("temperature") == 0.0:
             generation_kwargs.pop("temperature")
+        
+        # Ensure do_sample is properly set when temperature or top_p are provided
+        if do_sample is None:
+            # If temperature > 0 or top_p is set, enable sampling
+            if generation_kwargs.get("temperature", 0.0) > 0.0 or "top_p" in generation_kwargs:
+                generation_kwargs["do_sample"] = True
+            else:
+                generation_kwargs["do_sample"] = False
+        
+        # Remove temperature and top_p if do_sample is False to avoid warnings
+        if generation_kwargs.get("do_sample") is False:
+            if "temperature" in generation_kwargs and generation_kwargs["temperature"] == 0.0:
+                generation_kwargs.pop("temperature")
+            if "top_p" in generation_kwargs:
+                generation_kwargs.pop("top_p")
+        
+        # Ensure user-provided parameters take precedence over model's generation config
+        # This prevents the model's generation_config.json from overriding our settings
+        if hasattr(self.model, 'generation_config'):
+            # Force our do_sample setting to take precedence
+            if "do_sample" in generation_kwargs:
+                # Temporarily override the model's generation config
+                original_do_sample = getattr(self.model.generation_config, 'do_sample', None)
+                self.model.generation_config.do_sample = generation_kwargs["do_sample"]
+                
+                # If we're forcing do_sample=True, ensure temperature and top_p are respected
+                if generation_kwargs["do_sample"] and "temperature" in generation_kwargs:
+                    self.model.generation_config.temperature = generation_kwargs["temperature"]
+                if generation_kwargs["do_sample"] and "top_p" in generation_kwargs:
+                    self.model.generation_config.top_p = generation_kwargs["top_p"]
+        
         # build stopping criteria
         stopping_criteria = stop_sequences_criteria(
             self.tokenizer, stop, context.shape[1], context.shape[0]

@@ -10,6 +10,7 @@ from lm_eval.utils import eval_logger
 try:
     import sympy
     from sympy.parsing.latex import parse_latex
+    LATEX_PARSING_AVAILABLE = True
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "`sympy` is required for generating translation task prompt templates. \
