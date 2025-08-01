@@ -917,6 +917,7 @@ class HFLM(TemplateLM):
         do_sample = generation_kwargs.get("do_sample", None)
 
         # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
+        # BUT only if do_sample is not explicitly set by the user
         if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
             generation_kwargs["do_sample"] = do_sample = False
 
@@ -924,6 +925,7 @@ class HFLM(TemplateLM):
             generation_kwargs.pop("temperature")
         
         # Ensure do_sample is properly set when temperature or top_p are provided
+        # This should only happen if do_sample wasn't explicitly set
         if do_sample is None:
             # If temperature > 0 or top_p is set, enable sampling
             if generation_kwargs.get("temperature", 0.0) > 0.0 or "top_p" in generation_kwargs:
@@ -931,12 +933,22 @@ class HFLM(TemplateLM):
             else:
                 generation_kwargs["do_sample"] = False
         
-        # Remove temperature and top_p if do_sample is False to avoid warnings
-        if generation_kwargs.get("do_sample") is False:
-            if "temperature" in generation_kwargs and generation_kwargs["temperature"] == 0.0:
-                generation_kwargs.pop("temperature")
-            if "top_p" in generation_kwargs:
-                generation_kwargs.pop("top_p")
+        # CRITICAL FIX: Ensure user-provided parameters take absolute precedence
+        # If user explicitly set do_sample=True, NEVER override it
+        if "do_sample" in generation_kwargs:
+            # User explicitly set do_sample, respect it absolutely
+            user_do_sample = generation_kwargs["do_sample"]
+            
+            # If user set do_sample=True but temperature=0.0, adjust temperature to avoid warnings
+            if user_do_sample and generation_kwargs.get("temperature") == 0.0:
+                generation_kwargs["temperature"] = 0.1  # Small non-zero temperature for sampling
+            
+            # If user set do_sample=False, remove temperature and top_p to avoid warnings
+            elif not user_do_sample:
+                if "temperature" in generation_kwargs:
+                    generation_kwargs.pop("temperature")
+                if "top_p" in generation_kwargs:
+                    generation_kwargs.pop("top_p")
         
         # Ensure user-provided parameters take precedence over model's generation config
         # This prevents the model's generation_config.json from overriding our settings
